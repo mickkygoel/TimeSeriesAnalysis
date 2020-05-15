@@ -1,0 +1,307 @@
+---
+title: "Beer Sales - Forecasting"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+#Beer Sales - Forecasting
+
+Load data from TSA package 
+
+>library("TSA")
+
+>data(beersales)
+
+The data is the monthly beer sales in millions of barrels, 01/1975 - 12/1990.
+
+
+```{r}
+library(tseries)
+library(TSA)
+library(forecast)
+```
+
+
+# Loading data
+
+```{r}
+data("beersales")
+```
+
+```{r}
+head(beersales)
+tail(beersales)
+```
+```{r}
+plot(beersales)
+```
+
+
+#Part 1 
+
+Use ARIMA(p,d,q) model to forecast beer sales for all months of 1990.
+
+1A - Use the h-period in forecast() to forecast each month of 1990.
+
+
+First we need to split our data into train (1975-1989) and test (1990)
+
+```{r}
+beerdata.train<-beersales[c(1:180)]
+beerdata.test<-beersales[c(181:192)]
+```
+
+```{r}
+beer.data.train <- ts(beerdata.train,start=c(1975, 1),end=c(1989,12), frequency = 12)
+head(beer.data.train)
+tail(beer.data.train)
+
+```
+
+
+```{r}
+plot(beer.data.train)
+```
+
+
+Based on the plot, we can tell that there is seasonality in our ts as well as an upward trend over time.
+
+
+Next we will check acf and pacf of the data
+
+```{r}
+acf(beer.data.train)
+pacf(beer.data.train)
+```
+
+
+
+We see many significant lags in the ACF and less in the PACF.
+
+
+Next we will test stationarity of our ts.
+
+```{r}
+adf.test(beer.data.train)
+```
+
+
+Surprisingly and despite the seasonality and the upward trend it seems that our ts is stationary.
+
+Next we will check auto.arima for suggestions regarding the model we need to use for our prediction
+
+```{r}
+auto.arima(beer.data.train, seasonal = FALSE, stationary = FALSE)
+```
+
+```{r}
+auto.arima(beer.data.train, seasonal = FALSE, stationary = TRUE)
+```
+
+```{r}
+auto.arima(beer.data.train, seasonal = TRUE, stationary = FALSE)
+```
+
+```{r}
+auto.arima(beer.data.train, seasonal = TRUE, stationary = TRUE)
+```
+
+
+Auto.arima suggestion is to use p = 1 and q = 3 and d = 1 (although original time series turned out to be stationary).
+
+We will use the suggested parameters to fit our model
+
+```{r}
+fit.1 <- Arima(beer.data.train, order = c(1, 1, 3)); fit.1
+```
+
+Next we will check our residuals 
+
+```{r}
+tsdisplay(residuals(fit.1))
+
+Box.test(residuals(fit.1), lag = 12, type = "Ljung-Box")
+```
+
+
+We are noticing significant auto-correlations at certain lags, thus, our residuals are not similar to white noise. This might have to do with the fact that additional seasonal terms were not included in the model.
+Moreover, the Ljung-Box test indicates we should reject the null hypothesis (at 90% confidence level) saying there is no auto correlation.
+
+
+We will use the model to predict beersales for all 12 months of 1990.
+
+```{r}
+beer.forecast.fit.1 <- forecast(fit.1, h = 12)
+beer.forecast.fit.1
+```
+
+
+```{r}
+plot(beer.forecast.fit.1)
+```
+
+
+The predictions shows no seasonality, an indication that this model is not the best to use for predicting the beer sales.
+
+
+Next we will calculate the errors and plot them 
+
+```{r}
+cbind(beerdata.test, as.vector(beer.forecast.fit.1$mean))
+
+beer.forecast.fit.1.errors <- beerdata.test - as.vector(beer.forecast.fit.1$mean)
+
+beer.forecast.fit.1.errors
+```
+
+
+```{r}
+plot(seq(1:12), beer.forecast.fit.1.errors, type = "l")
+```
+
+
+The errors show seasonality
+
+Lastly we will calculate the sum of squared errors
+
+```{r}
+sum(beer.forecast.fit.1.errors^2)
+```
+
+
+
+```{r}
+h <- 1
+n <- length(beerdata.test) - h + 1
+fit.2 <- auto.arima(beer.data.train)
+fc <- ts(numeric(n), start=1990+(h-1)/12, freq=12)
+```
+
+```{r}
+for(i in 1:n)
+{  
+  x <- window(beersales, end=1989 + (i-1)/12)
+  refit <- Arima(x, model=fit.2)
+  fc[i] <- forecast(refit, h=h)$mean[h]
+}
+```
+
+
+
+```{r}
+plot(fc)
+```
+
+In the new prediction we observe seasonality
+
+Lastly we will calculate the sum of squared errors
+
+
+```{r}
+beer.forecast.fit.2.errors <- beerdata.test - as.vector(fc)
+beer.forecast.fit.2.errors
+```
+
+
+```{r}
+sum(beer.forecast.fit.2.errors^2)
+```
+
+
+Use month of the year seasonal ARIMA(p,d,q)(P,Q,D)s model to forecast beer sales for all the months of 1990.
+First we will use auto.arima to determine our parameters
+
+```{r}
+auto.arima(beer.data.train, seasonal = TRUE)
+```
+
+Next we will use suggested parameters to fit our model
+
+```{r}
+fit.3 <- Arima(beer.data.train, order = c(4, 1, 2), seasonal = c(2,1,2)); fit.3
+```
+
+Next we will check our residuals 
+
+```{r}
+tsdisplay(residuals(fit.3))
+
+Box.test(residuals(fit.3), lag = 12, type = "Ljung-Box")
+```
+
+
+Residuals are not similar to white noise with no autocorrelation. 
+Hence, after including the seasonal parameters into our model we got a better model.
+
+Next we will use our SARIMA model to forecast beer sales for 1990
+
+
+```{r}
+x = forecast(fit.3, h=12, level = .9 )
+x
+```
+
+
+```{r}
+beer.forecast.fit.3 <- forecast(fit.3, h = 12)
+plot(beer.forecast.fit.3)
+```
+
+```{r}
+beer.forecast.fit.3
+```
+
+```{r}
+tmp <- forecast(fit.3, h = 24)
+tmp
+```
+
+
+```{r}
+cbind(beerdata.test, as.vector(beer.forecast.fit.3$mean))
+
+beer.forecast.fit.3.errors <- beerdata.test - as.vector(beer.forecast.fit.3$mean)
+
+beer.forecast.fit.3.errors
+```
+
+```{r}
+plot(seq(1:12), beer.forecast.fit.3.errors, type = "l")
+```
+
+
+
+
+1
+
+
+Prediction now shows a similar seasonal patern.
+
+
+Next we will calculate the errors and plot them 
+
+```{r}
+cbind(beerdata.test, as.vector(beer.forecast.fit.1$mean))
+
+beer.forecast.fit.3.errors <- beerdata.test - as.vector(beer.forecast.fit.3$mean)
+
+beer.forecast.fit.3.errors
+```
+
+
+```{r}
+plot(seq(1:12), beer.forecast.fit.3.errors, type = "l")
+```
+
+The errors show seasonality
+
+
+Lastly we will calculate the sum of squared errors
+
+```{r}
+sum(beer.forecast.fit.3.errors^2)
+```
+
+
